@@ -11,12 +11,11 @@ namespace an;
 use an\tao\{ResultSet, TaoApiBase};
 
 class TaoRequest {
-    public int $appKey;
+    public int $appKey = 0;
     public string $secretKey;
     public string $gatewayUrl = 'https://eco.taobao.com/router/rest';
     public string $format = 'json';
     public bool $simplify = false;
-    public int $connectTimeout;
 
     protected string $signMethod = 'hmac';
     protected string $apiVersion = '2.0';
