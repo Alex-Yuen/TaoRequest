@@ -6,9 +6,8 @@
  * Time: 17:21
  */
 
-namespace tao;
+namespace an;
 
-use an\HttpCurl;
 use an\tao\{ResultSet, TaoApiBase};
 
 class TaoRequest {
