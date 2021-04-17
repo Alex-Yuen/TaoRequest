@@ -10,7 +10,6 @@ namespace an;
 
 use an\middleware\guzzle\TaoApiGuzzleMiddleware;
 use an\request\TaoApiBase;
-use JetBrains\PhpStorm\Pure;
 use JsonException;
 use Exception;
 use GuzzleHttp\Client;
