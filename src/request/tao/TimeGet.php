@@ -6,11 +6,12 @@
  * Copyright © 2020. Hangzhou FanLi Technology Co., Ltd All rights reserved.
  */
 
-namespace an\tao\request;
+namespace an\request\tao;
 
 
-use an\tao\TaoApiBase;
+use an\request\TaoApiBase;
 
-class TimeGet extends TaoApiBase {
+class TimeGet extends TaoApiBase
+{
     protected string $api = 'taobao.time.get';
 }

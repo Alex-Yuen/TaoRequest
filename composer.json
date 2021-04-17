@@ -18,7 +18,7 @@
     }
   },
   "require": {
-    "php": ">=7.4",
-    "anqin/httpcurl": "^1.0.0"
+    "php": ">=8.0",
+    "guzzlehttp/guzzle": "^7.3"
   }
 }

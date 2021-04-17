@@ -1,114 +1,128 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: AnQin
- * Date: 014 16 3 14
- * Time: 17:21
+/*
+ * 饭粒科技
+ * Author: AnQin <an-qin@qq.com>
+ * Copyright © 2019-2021. Hangzhou FanLi Technology Co., Ltd All rights reserved.
+ * Create Date: 2021-04-17 09:47
  */
 
 namespace an;
 
-use an\tao\{ResultSet, TaoApiBase};
+use an\middleware\guzzle\TaoApiGuzzleMiddleware;
+use an\request\TaoApiBase;
+use JsonException;
+use Exception;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
+use GuzzleHttp\HandlerStack;
 
-class TaoRequest {
-    public int $appKey = 0;
-    public string $secretKey;
-    public string $gatewayUrl = 'https://eco.taobao.com/router/rest';
-    public string $format = 'json';
-    public bool $simplify = false;
+class TaoRequest
+{
+    const Online            = 1;
+    const MessageService    = 2;
+    const AbroadOnline      = 4;
+    const SignMethod_MD5    = 'md5';
+    const SignMethod_HMAC   = 'hmac';
+    const SignMethod_SHA256 = 'hmac-sha256';
 
-    protected string $signMethod = 'hmac';
-    protected string $apiVersion = '2.0';
-    protected string $sdkVersion = 'top-ios-sdk';
+    const HttpMehod_GET  = 'GET';
+    const HttpMehod_POST = 'POST';
+    const ApiGatewayUrl  = [
+        1 => [
+            'gw.api.taobao.com/router/rest',
+            'eco.taobao.com/router/rest',
+        ],
+        2 => 'ws://mc.api.taobao.com/',
+        4 => 'api.taobao.com/router/rest',
+    ];
 
-    public function setSignMethod(string $type = 'md5') {
-        $this->signMethod = strtolower($type) != 'md5' ? 'hmac' : 'md5';
+    protected array $payload = [
+        'mode'            => self::Online,
+        'https'           => false,
+        'app_key'         => '',
+        'secret_key'      => '',
+        'sign_method'     => self::SignMethod_SHA256,
+        'api_version'     => '2.0',
+        'sdk_version'     => '',
+        'proxy'           => '',
+        'connect_timeout' => 3,
+        'read_timeout'    => 10,
+        'simplify'        => true,
+        'debug'           => false,
+        'http_errors'     => false,
+        'http_method'     => self::HttpMehod_POST,
+    ];
 
-        return $this;
+    public function __construct(array $config)
+    {
+        $this->payload = array_merge($this->payload, $config);
     }
 
-    /**
-     * @param TaoApiBase  $request
-     * @param string|null $session
-     * @param string|null $bestUrl
-     * @return mixed|ResultSet
-     * @throws \ErrorException
-     */
-    public function execute(TaoApiBase $request, ?string $session = null, ?string $bestUrl = null) {
-        $result = new ResultSet();
+    public function execute(TaoApiBase $request, ?string $session = null): array
+    {
+        $stack = HandlerStack::create();
+        $stack->push(new TaoApiGuzzleMiddleware($this->payload, $request, $session), 'TaoApi');
 
-        //组装系统参数
-        $sysParams['app_key'] = $this->appKey;
-        $sysParams['v'] = $this->apiVersion;
-        $sysParams['format'] = $this->format;
-        $sysParams['simplify'] = $this->simplify;
-        $sysParams['sign_method'] = $this->signMethod;
-        $sysParams['method'] = $request->getApiMethodName();
-        $sysParams['timestamp'] = date('Y-m-d H:i:s');
-        if (!is_null($session)) $sysParams['session'] = $session;
+        $client = new Client([
+            'handler'         => $stack,
+            'proxy'           => $this->payload['proxy'],
+            'http_errors'     => $this->payload['http_errors'],
+            'verify'          => $this->payload['https'],
+            'connect_timeout' => $this->payload['connect_timeout'],
+            'read_timeout'    => $this->payload['read_timeout'],
+            'debug'           => $this->payload['debug'],
+        ]);
 
-        //获取业务参数
-        $apiParams = $request->getApiParas();
-
-        //系统参数放入GET请求串
-        $requestUrl = ($bestUrl ?? $this->gatewayUrl) . '?';
-        $sysParams['partner_id'] = ($bestUrl ? $this->getClusterTag() : $this->sdkVersion);
-        //签名
-        $sysParams['sign'] = $this->generateSign(array_merge($apiParams, $sysParams));
-        foreach ($sysParams as $sysParamKey => $sysParamValue) $requestUrl .= $sysParamKey . '=' . urlencode($sysParamValue) . '&';
-        $requestUrl = substr($requestUrl, 0, -1);
 
         //发起HTTP请求
-        $http = new HttpCurl();
         try {
-            $resp = $http->post($requestUrl, $apiParams)->exec()->toString();
-        } catch (\Exception $e) {
-            $result->code = $e->getCode();
-            $result->msg = $e->getMessage();
-
-            return $result;
-        } finally {
-            $http->close();
-        }
-
-        //解析TOP返回结果
-        $respWellFormed = false;
-        $respObject = json_decode($resp, true, JSON_BIGINT_AS_STRING | JSON_UNESCAPED_UNICODE);
-        if (null !== $respObject) {
-            $respWellFormed = true;
-            foreach ($respObject as $propKey => $propValue) {
-                $respObject = $propValue;
+            $resp = $client->request(self::HttpMehod_POST)?->getBody()->getContents();
+            //解析TOP返回结果
+            $respWellFormed = false;
+            $respObject     = json_decode($resp, true, JSON_BIGINT_AS_STRING | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+            if (is_array($respObject)) {
+                $respWellFormed = true;
+                foreach ($respObject as $propValue)
+                    $respObject = $propValue;
             }
+
+            if (false === $respWellFormed) {
+                return [
+                    'code'       => 9999,
+                    'msg'        => 'HTTP_RESPONSE_NOT_WELL_FORMED',
+                    'sub_code'   => 9999,
+                    'sub_msg'    => '返回数据解析失败',
+                    'request_id' => '',
+                ];
+            }
+
+            return $respObject;
+        } catch (GuzzleException $e) {
+            return [
+                'code'       => 9999,
+                'msg'        => 'GuzzleException',
+                'sub_code'   => $e->getCode(),
+                'sub_msg'    => $e->getMessage(),
+                'request_id' => '',
+            ];
+        } catch (JsonException $e) {
+            return [
+                'code'       => 9999,
+                'msg'        => 'JsonException',
+                'sub_code'   => $e->getCode(),
+                'sub_msg'    => $e->getMessage(),
+                'request_id' => '',
+            ];
+        } catch (Exception $e) {
+            return [
+                'code'       => 9999,
+                'msg'        => 'Exception',
+                'sub_code'   => $e->getCode(),
+                'sub_msg'    => $e->getMessage(),
+                'request_id' => '',
+            ];
+        } finally {
+            $client = null;
         }
-
-        //返回的HTTP文本不是标准JSON或者XML，记下错误日志
-        if (false === $respWellFormed) {
-            $result->code = 0;
-            $result->msg = 'HTTP_RESPONSE_NOT_WELL_FORMED';
-
-            return $result;
-        }
-
-        return $respObject;
-    }
-
-    private function getClusterTag(): string {
-        return substr($this->sdkVersion, 0, 11) . '-cluster' . substr($this->sdkVersion, 11);
-    }
-
-    private function generateSign(array $params): string {
-        ksort($params);
-        $stringToBeSigned = '';
-        foreach ($params as $k => $v) if (!is_object($v)) $stringToBeSigned .= $k . $v;
-
-        unset($k, $v);
-        if ($this->signMethod == 'hmac') $sign = hash_hmac('md5', $stringToBeSigned, $this->secretKey); else
-            $sign = md5($this->secretKey . $stringToBeSigned . $this->secretKey);
-
-        return strtoupper($sign);
-    }
-
-    public function unixTimeStamp(): int {
-        return number_format(microtime(true), 3, '', '');
     }
 }
