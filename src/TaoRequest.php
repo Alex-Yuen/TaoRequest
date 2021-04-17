@@ -10,6 +10,7 @@ namespace an;
 
 use an\middleware\guzzle\TaoApiGuzzleMiddleware;
 use an\request\TaoApiBase;
+use JetBrains\PhpStorm\Pure;
 use JsonException;
 use Exception;
 use GuzzleHttp\Client;
@@ -56,6 +57,11 @@ class TaoRequest
     public function __construct(array $config)
     {
         $this->payload = array_merge($this->payload, $config);
+    }
+
+    public static function instance(array $config): static
+    {
+        return new static($config);
     }
 
     public function execute(TaoApiBase $request, ?string $session = null): array
